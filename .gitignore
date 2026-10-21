@@ -25,3 +25,8 @@ Desktop.ini
 # Python
 __pycache__/
 .venv/
+
+# ASP.NET Core: результаты сборки и локальные реквизиты
+**/bin/
+**/obj/
+**/appsettings.Local.json

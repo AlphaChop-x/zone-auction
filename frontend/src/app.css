@@ -1,0 +1,20 @@
+/* Дополнения React-основы; исходные стили лабораторных сохранены в assets. */
+button:disabled, input:disabled { cursor: not-allowed; }
+button:disabled { opacity: 0.65; }
+.button-primary:disabled:hover { background: var(--accent); }
+.category:disabled:hover { background: transparent; }
+.category.is-active:disabled:hover { background: var(--accent); }
+.empty-illustration { display: block; margin: 0 auto 16px; }
+.empty-state p { max-width: 42rem; margin-inline: auto; }
+.button { text-decoration: none; }
+.backend-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
