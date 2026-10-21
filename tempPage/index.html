@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Zone Auction — неофициальный мониторинг аукциона STALCRAFT: X. Актуальные предложения и цены на предметы.">
+  <title>Zone Auction — предметы и цены STALCRAFT: X</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <script src="../assets/js/catalog.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Перейти к содержимому</a>
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="Zone Auction — главная">
+      <span class="brand-mark" aria-hidden="true">Z</span>
+      <span>zone auction</span>
+    </a>
+    <div class="header-meta">
+      <span class="game-name">STALCRAFT: X</span>
+      <span class="region">Регион&nbsp; RU <svg class="icon icon-small" aria-hidden="true"><use href="#chevron"/></svg></span>
+    </div>
+  </header>
+
+  <main id="main" class="container">
+    <section class="catalog" aria-labelledby="catalog-title">
+      <div class="intro">
+        <p class="eyebrow">АУКЦИОН STALCRAFT: X</p>
+        <h1 id="catalog-title">Предметы. Цены. Ничего лишнего.</h1>
+        <p class="intro-description">Смотри актуальные предложения и сравнивай цены на предметы.</p>
+      </div>
+
+      <form class="search-toolbar" role="search" id="search-form">
+        <div class="search-field">
+          <svg class="icon" aria-hidden="true"><use href="#search"/></svg>
+          <label class="visually-hidden" for="search-input">Найти предмет по названию</label>
+          <input id="search-input" type="search" name="q" placeholder="Найти предмет по названию" autocomplete="off">
+        </div>
+        <button class="button button-primary search-button" type="submit">Найти</button>
+      </form>
+
+      <nav class="categories" aria-label="Категории предметов">
+        <button type="button" class="category is-active" data-category="all" aria-pressed="true">Все предметы</button>
+        <button type="button" class="category" data-category="weapon" aria-pressed="false">Оружие</button>
+        <button type="button" class="category" data-category="armor" aria-pressed="false">Броня</button>
+        <button type="button" class="category" data-category="artifact" aria-pressed="false">Артефакты</button>
+        <button type="button" class="category" data-category="equipment" aria-pressed="false">Снаряжение</button>
+      </nav>
+
+      <div class="results-heading">
+        <h2>Популярные предметы</h2>
+        <p id="results-count" aria-live="polite">6 предметов</p>
+        <label class="sort-control">
+          <span class="visually-hidden">Сортировка предметов</span>
+          <select id="sort">
+            <option value="popular">По популярности</option>
+            <option value="price-asc">Сначала дешевле</option>
+            <option value="price-desc">Сначала дороже</option>
+          </select>
+          <span aria-hidden="true">↓</span>
+        </label>
+      </div>
+
+      <ul class="item-list" id="item-list" aria-label="Предметы аукциона">
+        <li data-category="weapon" data-price="148000">
+          <article class="item-row">
+            <div class="item-art"><img src="../assets/images/rifle.svg" alt="" width="80" height="64"></div>
+            <div class="item-identity"><h3>АК-74М</h3><p>Штурмовая винтовка</p></div>
+            <p class="item-lots">24 лота</p>
+            <p class="item-price">от 148 000 ₽</p>
+            <svg class="icon item-arrow" aria-hidden="true"><use href="#arrow"/></svg>
+          </article>
+        </li>
+        <li data-category="artifact" data-price="62500">
+          <article class="item-row">
+            <div class="item-art"><img src="../assets/images/orb.svg" alt="" width="80" height="64"></div>
+            <div class="item-identity"><h3>Медуза</h3><p>Артефакт</p></div>
+            <p class="item-lots">18 лотов</p>
+            <p class="item-price">от 62 500 ₽</p>
+            <svg class="icon item-arrow" aria-hidden="true"><use href="#arrow"/></svg>
+          </article>
+        </li>
+        <li data-category="equipment" data-price="215000">
+          <article class="item-row">
+            <div class="item-art"><img src="../assets/images/pack.svg" alt="" width="80" height="64"></div>
+            <div class="item-identity"><h3>Берлога</h3><p>Рюкзак</p></div>
+            <p class="item-lots">12 лотов</p>
+            <p class="item-price">от 215 000 ₽</p>
+            <svg class="icon item-arrow" aria-hidden="true"><use href="#arrow"/></svg>
+          </article>
+        </li>
+        <li data-category="equipment" data-price="98000">
+          <article class="item-row">
+            <div class="item-art"><img src="../assets/images/device.svg" alt="" width="80" height="64"></div>
+            <div class="item-identity"><h3>Эльбрус</h3><p>Детектор</p></div>
+            <p class="item-lots">9 лотов</p>
+            <p class="item-price">от 98 000 ₽</p>
+            <svg class="icon item-arrow" aria-hidden="true"><use href="#arrow"/></svg>
+          </article>
+        </li>
+        <li data-category="artifact" data-price="174000">
+          <article class="item-row">
+            <div class="item-art"><img src="../assets/images/crystal.svg" alt="" width="80" height="64"></div>
+            <div class="item-identity"><h3>Кристалл</h3><p>Артефакт</p></div>
+            <p class="item-lots">31 лот</p>
+            <p class="item-price">от 174 000 ₽</p>
+            <svg class="icon item-arrow" aria-hidden="true"><use href="#arrow"/></svg>
+          </article>
+        </li>
+        <li data-category="artifact" data-price="86000">
+          <article class="item-row">
+            <div class="item-art"><img src="../assets/images/spiral.svg" alt="" width="80" height="64"></div>
+            <div class="item-identity"><h3>Спираль</h3><p>Артефакт</p></div>
+            <p class="item-lots">16 лотов</p>
+            <p class="item-price">от 86 000 ₽</p>
+            <svg class="icon item-arrow" aria-hidden="true"><use href="#arrow"/></svg>
+          </article>
+        </li>
+      </ul>
+      <div class="empty-state" id="empty-state" hidden>
+        <h3>Предметы не найдены</h3>
+        <p>Попробуй изменить запрос или выбрать другую категорию.</p>
+        <button class="button button-primary" id="reset-filters" type="button">Сбросить фильтры</button>
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <p>Демонстрационные данные · Неофициальный мониторинг аукциона</p>
+      <p>Только просмотр лотов</p>
+    </footer>
+  </main>
+
+  <svg class="svg-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="search" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8.75" cy="8.75" r="5.417"/><path d="m13.333 13.333 3.75 3.75"/></g></symbol>
+    <symbol id="chevron" viewBox="0 0 16 16"><path d="m5.333 6.667 2.667 2.666 2.667-2.666" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="arrow" viewBox="0 0 20 20"><path d="M4.167 10h11.666M11.667 5.833 15.833 10l-4.166 4.167" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </svg>
+</body>
+</html>
