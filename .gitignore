@@ -1,0 +1,27 @@
+# Зависимости и результаты сборки
+node_modules/
+dist/
+build/
+coverage/
+
+# Локальные настройки и секреты
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+
+# Временные файлы и журналы
+*.log
+*.tmp
+*.swp
+*~
+
+# Файлы операционной системы
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python
+__pycache__/
+.venv/
