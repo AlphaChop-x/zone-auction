@@ -27,7 +27,7 @@ const mock = createServer(async (req, res) => {
   requests++; active++; peak = Math.max(peak, active); times.push(Date.now());
   const url = new URL(req.url, 'http://mock');
   const offset = Number(url.searchParams.get('offset'));
-  assert.equal(url.searchParams.get('sort'), 'time_created');
+  assert.equal(url.searchParams.get('sort'), 'buyout_price');
   assert.equal(url.searchParams.get('order'), 'asc');
   assert.equal(url.searchParams.get('additional'), 'false');
   assert.match(req.headers.authorization, /^Bearer test-token-/);

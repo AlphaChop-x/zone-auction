@@ -35,7 +35,7 @@ button:disabled { opacity: 0.65; }
 .lots-more, .lots-progress { margin-top: 20px; }
 .lot-filters { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-block: 20px; }
 .filter-description, .filter-draft-notice, .lots-active { color: var(--muted); font-size: 0.8125rem; line-height: 1.7; overflow-wrap: anywhere; }
-.filter-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-block: 16px; }
+.filter-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-block: 16px; }
 .filter-field { min-width: 0; }
 .filter-field label { display: block; margin-bottom: 8px; font-size: 0.875rem; }
 .filter-field input, .filter-field select { width: 100%; min-width: 0; padding: 12px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; }
@@ -46,13 +46,19 @@ button:disabled { opacity: 0.65; }
 .filter-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 .filter-reset { background: var(--surface-secondary); color: var(--text); }
 .filter-draft-notice { margin-top: 12px; }
-.filter-sort { max-width: 26rem; margin-top: 16px; }
+.lot-sort-button { display: inline-flex; align-items: center; gap: 8px; background: transparent; color: inherit; padding: 8px 0; text-align: left; font: inherit; }
+.lot-sort-button > span[aria-hidden] { flex-shrink: 0; }
+.lot-sort-button.is-active { color: var(--accent); font-weight: 600; }
+.lots-mobile-sort { display: flex; gap: 8px 20px; flex-wrap: wrap; margin-block: 12px; font-size: 0.8125rem; }
+/* Keep controls reachable when filtering hides the table, too. */
+.lots-section:has(.lots-table) .lots-mobile-sort { display: none; }
 .lots-shown { margin-block: 12px 16px; font-weight: 600; }
 @media (max-width: 767px) {
   .filter-fields { grid-template-columns: minmax(0, 1fr); }
   .lots-table, .lots-table tbody { display: block; }
   .lots-table { background: transparent; }
-  .lots-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .lots-table thead { display: none; }
+  .lots-section:has(.lots-table) .lots-mobile-sort { display: flex; }
   .lots-table tr { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
   .lots-table td { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 12px; padding: 8px 0; border: 0; }
   .lots-table td::before { content: attr(data-label); color: var(--muted); }

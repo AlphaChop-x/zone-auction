@@ -4,6 +4,7 @@ import { ApiError, getItem, getItems, type Item, type ItemPage } from './api';
 import illustration from '../../assets/images/device.svg';
 import LotsPanel, { formatUtc, money } from './LotsPanel';
 import { clearOtherItem, findLoadedLot } from './loadedLots';
+import { formatUnitBuyout } from './lotFilters';
 
 type LoadState<T> = { kind: 'loading' } | { kind: 'success'; data: T } | { kind: 'error'; notFound?: boolean };
 
@@ -128,6 +129,7 @@ function LotDetailsPage() {
     {loaded ? <><h1>{loaded.itemName} — лот из загруженного набора</h1>
       <p>Количество: {loaded.lot.quantity} шт.<br />Начальная цена: {money(loaded.lot.startPrice)}<br />
         Выкуп: {loaded.lot.buyoutPrice === null ? 'Нет выкупа' : money(loaded.lot.buyoutPrice)}<br />
+        Выкуп за шт.: {formatUnitBuyout(loaded.lot)}<br />
         Текущая ставка: {loaded.lot.currentPrice === null ? 'Не передана источником' : money(loaded.lot.currentPrice)}<br />
         Начало: {formatUtc(loaded.lot.startTime)}<br />Окончание: {formatUtc(loaded.lot.endTime)}</p>
       <p>По загруженным лотам · STALZONE API · RU<br />Получено от источника: {formatUtc(loaded.fetchedAt)}</p>

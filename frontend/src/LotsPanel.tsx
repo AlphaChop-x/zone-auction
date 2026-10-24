@@ -2,7 +2,26 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError, getLots, type LotPage } from './api';
 import { Link } from 'react-router-dom';
 import { rememberLots } from './loadedLots';
-import { emptyFilterDraft, selectLots, sortLabels, validateFilters, type LotSort } from './lotFilters';
+import { emptyFilterDraft, formatUnitBuyout, nextSort, selectLots, sortLabels, validateFilters, type LotSort, type SortColumn } from './lotFilters';
+
+const sortColumns: { column: SortColumn; label: string }[] = [
+  { column: 'buyout', label: 'Выкуп за лот' }, { column: 'unit', label: 'Выкуп за шт.' }, { column: 'end', label: 'Окончание (UTC)' },
+];
+const filterFields = [
+  { key: 'min', label: 'Выкуп от' }, { key: 'max', label: 'Выкуп до' },
+  { key: 'unitMin', label: 'За штуку от' }, { key: 'unitMax', label: 'За штуку до' },
+] as const;
+
+function SortButton({ column, label, sort, onSort }: { column: SortColumn; label: string; sort: LotSort; onSort: (sort: LotSort) => void }) {
+  const active = sort === `${column}-asc` || sort === `${column}-desc`;
+  const ascending = sort === `${column}-asc`;
+  const next = nextSort(sort, column);
+  return <button type="button" className={`lot-sort-button${active ? ' is-active' : ''}`} aria-pressed={active}
+    title={next === 'loaded' ? 'Вернуть порядок загрузки' : sortLabels[next]} onClick={() => onSort(next)}>
+    {label} <span aria-hidden="true">{active ? ascending ? '↑' : '↓' : '↕'}</span>
+    <span className="visually-hidden">{active ? ascending ? ' — по возрастанию' : ' — по убыванию' : ' — сортировать'}</span>
+  </button>;
+}
 
 type Operation = 'initial' | 'more' | 'refresh';
 const dateFormat = new Intl.DateTimeFormat('ru-RU', {
@@ -83,10 +102,10 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
   const validation = validateFilters(draft);
   const applied = validateFilters(appliedDraft);
   // appliedDraft is updated only after successful validation; the source pages stay untouched.
-  const filters = applied.valid ? applied.filters : { min: null, max: null, onlyBuyout: false };
+  const filters = applied.valid ? applied.filters : { min: null, max: null, unitMin: null, unitMax: null, onlyBuyout: false };
   const visibleLots = selectLots(lots, filters, sort);
   const errors = validation.valid ? {} : validation.errors;
-  const hasEdits = draft.min !== appliedDraft.min || draft.max !== appliedDraft.max || draft.onlyBuyout !== appliedDraft.onlyBuyout;
+  const hasEdits = filterFields.some(({ key }) => draft[key] !== appliedDraft[key]) || draft.onlyBuyout !== appliedDraft.onlyBuyout;
   function resetFilters() {
     setDraft(emptyFilterDraft());
     setAppliedDraft(emptyFilterDraft());
@@ -110,22 +129,15 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
       if (validation.valid) setAppliedDraft({ ...draft });
       else event.currentTarget.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus();
     }}>
-      <p className="filter-description">Фильтры общей цены выкупа за весь лот. Обрабатываются только загруженные лоты.</p>
+      <p className="filter-description">Диапазоны выкупа за весь лот и за штуку применяются одновременно. Обрабатываются только загруженные лоты.</p>
       <div className="filter-fields">
-        <div className="filter-field">
-          <label htmlFor="buyout-min">Выкуп от</label>
-          <input id="buyout-min" type="text" inputMode="decimal" value={draft.min} placeholder="Без ограничения" maxLength={64}
-            aria-invalid={!!errors.min} aria-describedby={errors.min ? 'buyout-min-error filter-draft-notice' : 'filter-draft-notice'}
-            onChange={event => setDraft(value => ({ ...value, min: event.target.value }))} />
-          {errors.min && <p className="filter-error" id="buyout-min-error">{errors.min}</p>}
-        </div>
-        <div className="filter-field">
-          <label htmlFor="buyout-max">Выкуп до</label>
-          <input id="buyout-max" type="text" inputMode="decimal" value={draft.max} placeholder="Без ограничения" maxLength={64}
-            aria-invalid={!!errors.max} aria-describedby={errors.max ? 'buyout-max-error filter-draft-notice' : 'filter-draft-notice'}
-            onChange={event => setDraft(value => ({ ...value, max: event.target.value }))} />
-          {errors.max && <p className="filter-error" id="buyout-max-error">{errors.max}</p>}
-        </div>
+        {filterFields.map(({ key, label }) => <div className="filter-field" key={key}>
+          <label htmlFor={`buyout-${key}`}>{label}</label>
+          <input id={`buyout-${key}`} type="text" inputMode="decimal" value={draft[key]} placeholder="Без ограничения" maxLength={64}
+            aria-invalid={!!errors[key]} aria-describedby={errors[key] ? `buyout-${key}-error filter-draft-notice` : 'filter-draft-notice'}
+            onChange={event => setDraft(value => ({ ...value, [key]: event.target.value }))} />
+          {errors[key] && <p className="filter-error" id={`buyout-${key}-error`}>{errors[key]}</p>}
+        </div>)}
         <label className="filter-check"><input type="checkbox" checked={draft.onlyBuyout}
           onChange={event => setDraft(value => ({ ...value, onlyBuyout: event.target.checked }))} />Только с выкупом</label>
       </div>
@@ -134,14 +146,15 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
       <p className="filter-draft-notice" id="filter-draft-notice" role="status">{!validation.valid
         ? 'Диапазон не применён: исправьте ошибки. Показаны результаты с активными параметрами ниже.'
         : hasEdits ? 'Есть неприменённые изменения. Нажмите «Применить фильтры».' : 'Показаны результаты с активными параметрами ниже.'}</p>
-      <div className="filter-field filter-sort"><label htmlFor="lot-sort">Сортировка загруженных лотов</label>
-        <select id="lot-sort" value={sort} onChange={event => setSort(event.target.value as LotSort)}>
-          {Object.entries(sortLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-      </div>
     </form>
     <p className="lots-active">Активные параметры: выкуп от {filters.min?.text ?? 'без ограничения'}; выкуп до {filters.max?.text ?? 'без ограничения'};
+      {' '}за штуку от {filters.unitMin?.text ?? 'без ограничения'}; за штуку до {filters.unitMax?.text ?? 'без ограничения'};
       {' '}только с выкупом: {filters.onlyBuyout ? 'да' : 'нет'}; сортировка: {sortLabels[sort]}.</p>
+    <p className="lots-note">Выкуп за шт. = выкуп за лот / количество. ≈ — округлено до двух знаков только для показа; фильтры и сортировка используют точное значение.</p>
+    <p className="lots-note">Сортировка стрелками: возрастание → убывание → порядок загрузки.</p>
+    <div className="lots-mobile-sort" role="group" aria-label="Сортировка загруженных лотов">
+      {sortColumns.map(props => <SortButton key={props.column} {...props} sort={sort} onSort={setSort} />)}
+    </div>
     <p className="lots-shown" role="status">Показано {visibleLots.length} из {lots.length} загруженных</p>
     <div aria-live="polite" aria-busy={operation !== null}>
       {operation === 'initial' && <p className="empty-state" role="status">Загружаем лоты…</p>}
@@ -157,12 +170,17 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
         <p>Измените фильтры или загрузите следующую страницу, если она доступна.</p>
         <button className="button button-primary" type="button" onClick={resetFilters}>Сбросить фильтры</button></div>}
       {visibleLots.length > 0 && <table className="lots-table">
-        <caption className="visually-hidden">Загруженные лоты выбранного предмета. Цены за весь лот.</caption>
-        <thead><tr><th scope="col">Количество</th><th scope="col">Начальная цена</th><th scope="col">Выкуп за лот</th><th scope="col">Окончание (UTC)</th><th scope="col"><span className="visually-hidden">Подробности</span></th></tr></thead>
+        <caption className="visually-hidden">Загруженные лоты: начальная цена и выкуп за весь лот, отдельно выкуп за штуку.</caption>
+        <thead><tr><th scope="col">Количество</th><th scope="col">Начальная цена</th>
+          {sortColumns.map(props => <th key={props.column} scope="col" aria-sort={sort === `${props.column}-asc` ? 'ascending' : sort === `${props.column}-desc` ? 'descending' : 'none'}>
+            <SortButton {...props} sort={sort} onSort={setSort} />
+          </th>)}
+          <th scope="col"><span className="visually-hidden">Подробности</span></th></tr></thead>
         <tbody>{visibleLots.map(lot => <tr key={lot.id}>
           <td data-label="Количество">{lot.quantity} шт.</td>
           <td data-label="Начальная цена">{money(lot.startPrice)}</td>
           <td data-label="Выкуп за лот">{lot.buyoutPrice === null ? 'Нет выкупа' : money(lot.buyoutPrice)}</td>
+          <td data-label="Выкуп за шт.">{formatUnitBuyout(lot)}</td>
           <td data-label="Окончание (UTC)"><time dateTime={lot.endTime}>{formatUtc(lot.endTime)}</time></td>
           <td data-label="Подробности"><Link to={`/items/${encodeURIComponent(itemId)}/lots/${encodeURIComponent(lot.id)}`}>Подробнее о лоте</Link></td>
         </tr>)}</tbody>
