@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, getLots, type LotPage } from './api';
-import { Link } from 'react-router-dom';
-import { rememberLots } from './loadedLots';
+import { Link, useLocation } from 'react-router-dom';
+import { getLoadedLots, rememberLots, type Operation } from './loadedLots';
 import { emptyFilterDraft, formatUnitBuyout, nextSort, selectLots, sortLabels, validateFilters, type LotSort, type SortColumn } from './lotFilters';
 
 const sortColumns: { column: SortColumn; label: string }[] = [
@@ -23,7 +23,6 @@ function SortButton({ column, label, sort, onSort }: { column: SortColumn; label
   </button>;
 }
 
-type Operation = 'initial' | 'more' | 'refresh';
 const dateFormat = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
   timeZone: 'UTC', timeZoneName: 'short',
@@ -34,14 +33,16 @@ export const money = (value: string) => `${BigInt(value).toLocaleString('ru-RU')
 
 // Parent keys this component by exact item ID: changing items discards the entire set.
 export default function LotsPanel({ itemId, itemName }: { itemId: string; itemName: string }) {
-  const [pages, setPages] = useState<LotPage[]>([]);
-  const [operation, setOperation] = useState<Operation | null>('initial');
-  const [failure, setFailure] = useState<{ error: Error; operation: Operation } | null>(null);
+  const location = useLocation();
+  const [saved] = useState(() => getLoadedLots(itemId));
+  const [pages, setPages] = useState<LotPage[]>(saved?.pages ?? []);
+  const [operation, setOperation] = useState<Operation | null>(saved ? null : 'initial');
+  const [failure, setFailure] = useState<{ error: Error; operation: Operation } | null>(saved?.view.failure ?? null);
   const [retryReady, setRetryReady] = useState(true);
-  const [draft, setDraft] = useState(emptyFilterDraft);
-  const [appliedDraft, setAppliedDraft] = useState(emptyFilterDraft);
-  const [sort, setSort] = useState<LotSort>('loaded');
-  const pagesRef = useRef<LotPage[]>([]);
+  const [draft, setDraft] = useState(saved?.view.draft ?? emptyFilterDraft);
+  const [appliedDraft, setAppliedDraft] = useState(saved?.view.appliedDraft ?? emptyFilterDraft);
+  const [sort, setSort] = useState<LotSort>(saved?.view.sort ?? 'loaded');
+  const pagesRef = useRef<LotPage[]>(pages);
   const busy = useRef(false);
   const mounted = useRef(false);
   const generation = useRef(0);
@@ -66,7 +67,6 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
       // Do not merge different pages by a hash of fields: identical-looking lots may be distinct.
       const next = mode === 'more' ? duplicate ? previous : [...previous, page] : [page];
       pagesRef.current = next;
-      rememberLots(itemId, itemName, next);
       setPages(next);
     } catch (error) {
       if (mounted.current && generation.current === request)
@@ -79,7 +79,7 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
 
   useEffect(() => {
     mounted.current = true;
-    void load('initial');
+    if (!saved || (saved.pages.length === 0 && !saved.view.failure)) void load('initial');
     return () => {
       mounted.current = false;
       generation.current++;
@@ -87,6 +87,10 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
       busy.current = false;
     };
   }, [itemId]);
+
+  useEffect(() => {
+    rememberLots(itemId, itemName, pages, { draft, appliedDraft, sort, failure });
+  }, [itemId, itemName, pages, draft, appliedDraft, sort, failure]);
 
   const retryAt = failure?.error instanceof ApiError ? failure.error.retryAt : undefined;
   useEffect(() => {
@@ -155,11 +159,11 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
     <div className="lots-mobile-sort" role="group" aria-label="Сортировка загруженных лотов">
       {sortColumns.map(props => <SortButton key={props.column} {...props} sort={sort} onSort={setSort} />)}
     </div>
-    <p className="lots-shown" role="status">Показано {visibleLots.length} из {lots.length} загруженных</p>
+    <p className="lots-shown" role="status">Показано {visibleLots.length} из {lots.length} загруженных. Сортировка: {sortLabels[sort]}.</p>
     <div aria-live="polite" aria-busy={operation !== null}>
       {operation === 'initial' && <p className="empty-state" role="status">Загружаем лоты…</p>}
       {failure && <div className="lots-error" role="alert">
-        <h3>{failure.error instanceof ApiError && failure.error.status === 429 ? 'Ограничение запросов' : 'Не удалось загрузить лоты'}</h3>
+        <h3>{failure.error instanceof ApiError && failure.error.status === 429 ? 'Ограничение запросов' : failure.operation === 'more' ? 'Не удалось загрузить ещё лоты' : failure.operation === 'refresh' ? 'Не удалось обновить лоты' : 'Не удалось загрузить лоты'}</h3>
         <p>{failure.error.message}</p>
         {pages.length > 0 && <p>{failure.operation === 'refresh' ? 'Обновление не удалось. Показан прежний набор с прежним временем получения.' : 'Сохранены ранее загруженные страницы.'}</p>}
         {retryAt !== undefined && <p>Повтор доступен после {formatUtc(retryAt)}.</p>}
@@ -182,7 +186,8 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
           <td data-label="Выкуп за лот">{lot.buyoutPrice === null ? 'Нет выкупа' : money(lot.buyoutPrice)}</td>
           <td data-label="Выкуп за шт.">{formatUnitBuyout(lot)}</td>
           <td data-label="Окончание (UTC)"><time dateTime={lot.endTime}>{formatUtc(lot.endTime)}</time></td>
-          <td data-label="Подробности"><Link to={`/items/${encodeURIComponent(itemId)}/lots/${encodeURIComponent(lot.id)}`}>Подробнее о лоте</Link></td>
+          <td data-label="Подробности"><Link id={`lot-${lot.id}`} to={`/items/${encodeURIComponent(itemId)}/lots/${encodeURIComponent(lot.id)}`}
+            state={{ returnTo: location.state?.returnTo, lotsPath: location.pathname }} aria-label={`Подробнее о лоте: ${lot.quantity} шт., выкуп ${lot.buyoutPrice === null ? 'отсутствует' : money(lot.buyoutPrice)}, окончание ${formatUtc(lot.endTime)}`}>Подробнее о лоте</Link></td>
         </tr>)}</tbody>
       </table>}
       {operation === 'more' && <p className="lots-progress" role="status">Загружаем ещё лоты…</p>}

@@ -75,13 +75,18 @@ test('rounded display never determines unit range membership', () => {
 });
 
 test('unit formatting handles exact values, half-up rounding, carry and Int64 without Number conversion', () => {
-  assert.equal(formatUnitBuyout(A), '50 ₽/шт.');
+  assert.equal(formatUnitBuyout(A), '50,00 ₽/шт.');
   assert.equal(formatUnitBuyout(C), '—');
-  assert.equal(formatUnitBuyout(lot('half', 2, '1', A.endTime)), '0,5 ₽/шт.');
+  assert.equal(formatUnitBuyout(lot('half', 2, '1', A.endTime)), '0,50 ₽/шт.');
   assert.equal(formatUnitBuyout(lot('eighth', 8, '1', A.endTime)), '≈0,13 ₽/шт.');
-  assert.equal(formatUnitBuyout(lot('carry', 1000, '1999', A.endTime)), '≈2 ₽/шт.');
-  assert.equal(formatUnitBuyout(lot('max', 1, '9223372036854775807', A.endTime)), `${9223372036854775807n.toLocaleString('ru-RU')} ₽/шт.`);
-  assert.throws(() => formatUnitBuyout(lot('zero-quantity', 0, '100', A.endTime)), RangeError);
+  assert.equal(formatUnitBuyout(lot('carry', 1000, '1999', A.endTime)), '≈2,00 ₽/шт.');
+  assert.equal(formatUnitBuyout(lot('max', 1, '9223372036854775807', A.endTime)), `${9223372036854775807n.toLocaleString('ru-RU')},00 ₽/шт.`);
+  for (const quantity of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    const invalid = lot('invalid', quantity, '100', A.endTime);
+    assert.equal(formatUnitBuyout(invalid), '—');
+    assert.deepEqual(selectLots([invalid, A], filters('', '', false, '0'), 'loaded'), [A]);
+    for (const sort of ['unit-asc', 'unit-desc']) assert.deepEqual(selectLots([invalid, A], filters(), sort), [A, invalid]);
+  }
 });
 
 test('unit validation rejects bad boundaries and inverted ranges at the correct fields; reset clears both ranges', () => {

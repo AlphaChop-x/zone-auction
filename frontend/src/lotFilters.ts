@@ -41,7 +41,7 @@ export const emptyFilterDraft = (): FilterDraft => ({ min: '', max: '', unitMin:
 // Keep the quotient as a rational: rounding is exclusively a presentation concern.
 export function unitBuyout(lot: Pick<AuctionLot, 'buyoutPrice' | 'quantity'>) {
   if (lot.buyoutPrice === null) return null;
-  if (!Number.isSafeInteger(lot.quantity) || lot.quantity <= 0) throw new RangeError('Invalid lot quantity');
+  if (!Number.isSafeInteger(lot.quantity) || lot.quantity <= 0) return null;
   return { numerator: BigInt(lot.buyoutPrice), denominator: BigInt(lot.quantity) };
 }
 
@@ -50,8 +50,8 @@ export function formatUnitBuyout(lot: Pick<AuctionLot, 'buyoutPrice' | 'quantity
   if (price === null) return '—';
   const scaled = price.numerator * 100n;
   const rounded = (scaled * 2n + price.denominator) / (price.denominator * 2n);
-  const fraction = (rounded % 100n).toString().padStart(2, '0').replace(/0+$/, '');
-  return `${scaled % price.denominator === 0n ? '' : '≈'}${(rounded / 100n).toLocaleString('ru-RU')}${fraction ? `,${fraction}` : ''} ₽/шт.`;
+  const fraction = (rounded % 100n).toString().padStart(2, '0');
+  return `${scaled % price.denominator === 0n ? '' : '≈'}${(rounded / 100n).toLocaleString('ru-RU')},${fraction} ₽/шт.`;
 }
 
 function parseBound(input: string): ExactBound | null {
@@ -90,21 +90,30 @@ export function selectLots(lots: readonly AuctionLot[], filters: LotFilters, sor
   const result = lots.filter(lot => {
     if (lot.buyoutPrice === null) return !filters.onlyBuyout && filters.min === null && filters.max === null && filters.unitMin === null && filters.unitMax === null;
     const price = BigInt(lot.buyoutPrice);
+    const unit = unitBuyout(lot);
     return (filters.min === null || price * filters.min.factor >= filters.min.coefficient)
       && (filters.max === null || price * filters.max.factor <= filters.max.coefficient)
-      && (filters.unitMin === null || price * filters.unitMin.factor >= filters.unitMin.coefficient * BigInt(lot.quantity))
-      && (filters.unitMax === null || price * filters.unitMax.factor <= filters.unitMax.coefficient * BigInt(lot.quantity));
+      && (filters.unitMin === null || unit !== null && unit.numerator * filters.unitMin.factor >= filters.unitMin.coefficient * unit.denominator)
+      && (filters.unitMax === null || unit !== null && unit.numerator * filters.unitMax.factor <= filters.unitMax.coefficient * unit.denominator);
   });
   if (sort === 'loaded') return result;
   return result.sort((a, b) => {
     let order: number;
     if (sort === 'buyout-asc' || sort === 'buyout-desc' || sort === 'unit-asc' || sort === 'unit-desc') {
-      // Null is last in BOTH directions; do not reverse a null-aware ascending list.
-      if (a.buyoutPrice === null && b.buyoutPrice !== null) return 1;
-      if (a.buyoutPrice !== null && b.buyoutPrice === null) return -1;
-      const left = a.buyoutPrice === null ? 0n : BigInt(a.buyoutPrice) * (sort.startsWith('unit-') ? BigInt(b.quantity) : 1n);
-      const right = b.buyoutPrice === null ? 0n : BigInt(b.buyoutPrice) * (sort.startsWith('unit-') ? BigInt(a.quantity) : 1n);
-      order = left < right ? -1 : left > right ? 1 : 0;
+      if (sort.startsWith('unit-')) {
+        const left = unitBuyout(a), right = unitBuyout(b);
+        if (left === null && right !== null) return 1;
+        if (left !== null && right === null) return -1;
+        const difference = left !== null && right !== null ? left.numerator * right.denominator - right.numerator * left.denominator : 0n;
+        order = difference < 0n ? -1 : difference > 0n ? 1 : 0;
+      } else {
+        // Null is last in BOTH directions; do not reverse a null-aware ascending list.
+        if (a.buyoutPrice === null && b.buyoutPrice !== null) return 1;
+        if (a.buyoutPrice !== null && b.buyoutPrice === null) return -1;
+        const left = a.buyoutPrice === null ? 0n : BigInt(a.buyoutPrice);
+        const right = b.buyoutPrice === null ? 0n : BigInt(b.buyoutPrice);
+        order = left < right ? -1 : left > right ? 1 : 0;
+      }
     } else {
       order = Math.sign(Date.parse(a.endTime) - Date.parse(b.endTime));
     }

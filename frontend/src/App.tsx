@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, getItem, getItems, type Item, type ItemPage } from './api';
 import illustration from '../../assets/images/device.svg';
 import LotsPanel, { formatUtc, money } from './LotsPanel';
-import { clearOtherItem, findLoadedLot } from './loadedLots';
+import { clearOtherItem, findLoadedLot, getLoadedItem, rememberItem } from './loadedLots';
 import { formatUnitBuyout } from './lotFilters';
 
 type LoadState<T> = { kind: 'loading' } | { kind: 'success'; data: T } | { kind: 'error'; notFound?: boolean };
@@ -92,16 +92,20 @@ function ItemPageView() {
 }
 
 function ItemScreen({ itemId }: { itemId: string }) {
-  const [state, setState] = useState<LoadState<Item>>({ kind: 'loading' });
+  const [state, setState] = useState<LoadState<Item>>(() => {
+    const item = getLoadedItem(itemId);
+    return item ? { kind: 'success', data: item } : { kind: 'loading' };
+  });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     clearOtherItem(itemId);
+    if (getLoadedItem(itemId)) return;
     let cancelled = false;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8000);
     setState({ kind: 'loading' });
     getItem(itemId, controller.signal)
-      .then(data => { if (!cancelled) setState({ kind: 'success', data }); })
+      .then(data => { if (!cancelled) { rememberItem(data); setState({ kind: 'success', data }); } })
       .catch(error => { if (!cancelled) setState({ kind: 'error', notFound: error instanceof ApiError && error.status === 404 }); })
       .finally(() => window.clearTimeout(timeout));
     return () => { cancelled = true; controller.abort(); window.clearTimeout(timeout); };
@@ -124,19 +128,42 @@ function CatalogReturn() {
 
 function LotDetailsPage() {
   const { itemId = '', lotId = '' } = useParams();
+  const location = useLocation();
   const loaded = findLoadedLot(itemId, lotId);
-  return <section className="empty-state">
-    {loaded ? <><h1>{loaded.itemName} — лот из загруженного набора</h1>
-      <p>Количество: {loaded.lot.quantity} шт.<br />Начальная цена: {money(loaded.lot.startPrice)}<br />
-        Выкуп: {loaded.lot.buyoutPrice === null ? 'Нет выкупа' : money(loaded.lot.buyoutPrice)}<br />
-        Выкуп за шт.: {formatUnitBuyout(loaded.lot)}<br />
-        Текущая ставка: {loaded.lot.currentPrice === null ? 'Не передана источником' : money(loaded.lot.currentPrice)}<br />
-        Начало: {formatUtc(loaded.lot.startTime)}<br />Окончание: {formatUtc(loaded.lot.endTime)}</p>
-      <p>По загруженным лотам · STALZONE API · RU<br />Получено от источника: {formatUtc(loaded.fetchedAt)}</p>
-      <p>Это данные текущего набора, а не отдельный запрос актуального состояния лота. Временный ключ теряется при перезагрузке приложения.</p>
-    </> : <><h1>Лот недоступен в загруженном наборе</h1><p>Стабильного ID лота в API нет. Временный ключ не позволяет запросить отдельный лот у источника.</p></>}
-    <Link className="button button-primary" to={`/items/${encodeURIComponent(itemId)}`}>К лотам предмета</Link>
+  const basePath = `/items/${encodeURIComponent(itemId)}`;
+  const lotsPath = location.state?.lotsPath === `${basePath}/lots` ? `${basePath}/lots` : basePath;
+  const validQuantity = loaded && Number.isSafeInteger(loaded.lot.quantity) && loaded.lot.quantity > 0;
+  return <section className="lot-details" aria-labelledby="lot-details-title">
+    {loaded ? <>
+      <p className="eyebrow">ПОДРОБНОСТИ ЛОТА · RU</p>
+      <h1 id="lot-details-title">{loaded.itemName}</h1>
+      <p className="lot-warning">Предложение могло измениться или исчезнуть. Здесь показана выбранная запись из загруженного набора, без отдельного запроса актуального состояния лота.</p>
+      <dl className="lot-facts">
+        <div><dt>Количество</dt><dd>{validQuantity ? `${loaded.lot.quantity} шт.` : 'Некорректное количество в данных источника'}</dd></div>
+        <div><dt>Начальная цена за лот</dt><dd>{money(loaded.lot.startPrice)}</dd></div>
+        <div><dt>Выкуп за лот</dt><dd>{loaded.lot.buyoutPrice === null ? 'Нет выкупа' : money(loaded.lot.buyoutPrice)}</dd></div>
+        <div><dt>Выкуп за единицу</dt><dd>{loaded.lot.buyoutPrice === null ? 'Не рассчитывается: нет выкупа' : !validQuantity ? 'Не рассчитывается: некорректное количество' : formatUnitBuyout(loaded.lot)}</dd></div>
+        <div><dt>Текущая ставка за лот</dt><dd>{loaded.lot.currentPrice === null ? 'Не передана источником' : money(loaded.lot.currentPrice)}</dd></div>
+        <div><dt>Начало (UTC)</dt><dd><time dateTime={loaded.lot.startTime}>{formatUtc(loaded.lot.startTime)}</time></dd></div>
+        <div><dt>Окончание (UTC)</dt><dd><time dateTime={loaded.lot.endTime}>{formatUtc(loaded.lot.endTime)}</time></dd></div>
+        <div><dt>Получено от источника (UTC)</dt><dd><time dateTime={loaded.fetchedAt}>{formatUtc(loaded.fetchedAt)}</time></dd></div>
+      </dl>
+      <p className="lots-note">Выкуп за единицу = выкуп за лот / количество. Два знака после запятой — только для отображения; ≈ означает округление.</p>
+      <p className="lots-note">По загруженным лотам · <a href="https://eapi.stalzone.com/reference" target="_blank" rel="noreferrer">STALZONE API</a> · RU. Ключ записи временный и действует только в текущем наборе.</p>
+    </> : <><h1 id="lot-details-title">Лот недоступен в загруженном наборе</h1><p>Ссылка открыта напрямую, приложение перезагружено или этой записи больше нет в текущем наборе. Стабильного ID лота в API нет: восстановить предложение по временному ключу нельзя. Вернитесь к списку и выберите загруженный лот.</p></>}
+    <Link className="button button-primary" to={lotsPath} state={{ returnTo: location.state?.returnTo }}>К лотам предмета</Link>
   </section>;
+}
+
+function RouteFocus() {
+  const { pathname } = useLocation();
+  const previous = useRef(pathname);
+  useEffect(() => {
+    if (previous.current === pathname) return;
+    previous.current = pathname;
+    document.getElementById('main')?.focus();
+  }, [pathname]);
+  return null;
 }
 
 function NotFoundPage() {
@@ -151,6 +178,7 @@ export default function App() {
       <div className="header-meta"><span className="game-name">STALZONE</span><span className="region">Регион RU</span></div>
     </header>
     <main id="main" className="container" tabIndex={-1}>
+      <RouteFocus />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/items/:itemId" element={<ItemPageView />} />
