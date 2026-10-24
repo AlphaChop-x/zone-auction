@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Data/items.ru.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="appsettings.Local.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
   </ItemGroup>
 </Project>

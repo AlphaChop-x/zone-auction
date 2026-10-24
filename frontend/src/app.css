@@ -17,6 +17,30 @@ button:disabled { opacity: 0.65; }
 .catalog-pagination { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
 .catalog-summary, .catalog-source { color: var(--muted); font-size: 0.8125rem; line-height: 1.7; margin-block: 16px; overflow-wrap: anywhere; }
 .catalog-source a { color: inherit; }
+.item-page { padding-block: 32px; }
+.selected-item { display: flex; align-items: center; gap: 20px; margin-bottom: 24px; }
+.selected-item .catalog-icon { flex-shrink: 0; margin: 0; }
+.selected-item h1 { font-size: clamp(1.4rem, 3vw, 2rem); overflow-wrap: anywhere; }
+.selected-item p { color: var(--muted); font-size: 0.8125rem; margin-top: 8px; overflow-wrap: anywhere; }
+.lots-section { margin-top: 32px; }
+.lots-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.lots-heading h2 { font-size: 1.25rem; }
+.lots-meta, .lots-note { color: var(--muted); font-size: 0.8125rem; line-height: 1.8; margin-block: 16px; overflow-wrap: anywhere; }
+.lots-table { width: 100%; border-collapse: collapse; background: var(--surface); text-align: left; }
+.lots-table th, .lots-table td { padding: 16px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.lots-table th { color: var(--muted); font-size: 0.8125rem; font-weight: 500; }
+.lots-table td { font-size: 0.875rem; }
+.lots-error { border: 1px solid var(--accent); background: var(--surface); padding: 20px; border-radius: 12px; margin-block: 20px; }
+.lots-error p { margin-block: 12px; line-height: 1.6; }
+.lots-more, .lots-progress { margin-top: 20px; }
+@media (max-width: 767px) {
+  .lots-table, .lots-table tbody { display: block; }
+  .lots-table { background: transparent; }
+  .lots-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .lots-table tr { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .lots-table td { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 12px; padding: 8px 0; border: 0; }
+  .lots-table td::before { content: attr(data-label); color: var(--muted); }
+}
 @media (max-width: 480px) { .catalog-result { grid-template-columns: 56px minmax(0, 1fr) 16px; gap: 10px; padding: 12px; } .catalog-result .catalog-icon { width: 56px; height: 56px; } }
 .backend-status {
   display: flex;

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, getItem, getItems, type Item, type ItemPage } from './api';
 import illustration from '../../assets/images/device.svg';
+import LotsPanel, { formatUtc, money } from './LotsPanel';
+import { clearOtherItem, findLoadedLot } from './loadedLots';
 
 type LoadState<T> = { kind: 'loading' } | { kind: 'success'; data: T } | { kind: 'error'; notFound?: boolean };
 
@@ -45,7 +47,7 @@ function HomePage() {
     <div className="intro">
       <p className="eyebrow">АУКЦИОН STALZONE · RU</p>
       <h1 className="catalog-title" id="catalog-title">Начните с предмета</h1>
-      <p className="intro-description">Найдите знакомый предмет в официальном справочнике. Загрузка лотов ещё не подключена.</p>
+      <p className="intro-description">Найдите знакомый предмет и откройте его активные лоты аукциона региона RU.</p>
     </div>
     <form className="search-toolbar" role="search" aria-label="Поиск предметов" onSubmit={event => {
       event.preventDefault();
@@ -85,9 +87,14 @@ function HomePage() {
 
 function ItemPageView() {
   const { itemId = '' } = useParams();
+  return <ItemScreen key={itemId} itemId={itemId} />;
+}
+
+function ItemScreen({ itemId }: { itemId: string }) {
   const [state, setState] = useState<LoadState<Item>>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    clearOtherItem(itemId);
     let cancelled = false;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8000);
@@ -98,11 +105,12 @@ function ItemPageView() {
       .finally(() => window.clearTimeout(timeout));
     return () => { cancelled = true; controller.abort(); window.clearTimeout(timeout); };
   }, [itemId, attempt]);
-  return <section className="empty-state">
+  return <section className="item-page">
     {state.kind === 'loading' ? <p role="status">Загружаем предмет…</p>
       : state.kind === 'error' ? <><h1>{state.notFound ? 'Предмет не найден' : 'Не удалось загрузить предмет'}</h1>{!state.notFound && <button className="button button-primary" onClick={() => setAttempt(value => value + 1)}>Повторить запрос</button>}</>
-      : <><ItemImage key={state.data.id} item={state.data} /><h1>{state.data.name}</h1><p>{state.data.category} · ID: {state.data.id}</p><h2>Загрузка лотов ещё не подключена</h2><p>Здесь пока только данные официального справочника.</p></>}
+      : <><div className="selected-item"><ItemImage key={state.data.id} item={state.data} /><div><h1>{state.data.name}</h1><p>{state.data.category} · ID: {state.data.id}</p></div></div></>}
     <CatalogReturn />
+    {state.kind === 'success' && <LotsPanel key={itemId} itemId={itemId} itemName={state.data.name} />}
   </section>;
 }
 
@@ -113,8 +121,20 @@ function CatalogReturn() {
   return <Link className="button button-primary" to={typeof returnTo === 'string' && returnTo.startsWith('/?') ? returnTo : '/'}>Вернуться к поиску</Link>;
 }
 
-function PendingPage() {
-  return <section className="empty-state"><h1>Лоты ещё не подключены</h1><Link className="button button-primary" to="/">Вернуться в каталог</Link></section>;
+function LotDetailsPage() {
+  const { itemId = '', lotId = '' } = useParams();
+  const loaded = findLoadedLot(itemId, lotId);
+  return <section className="empty-state">
+    {loaded ? <><h1>{loaded.itemName} — лот из загруженного набора</h1>
+      <p>Количество: {loaded.lot.quantity} шт.<br />Начальная цена: {money(loaded.lot.startPrice)}<br />
+        Выкуп: {loaded.lot.buyoutPrice === null ? 'Нет выкупа' : money(loaded.lot.buyoutPrice)}<br />
+        Текущая ставка: {loaded.lot.currentPrice === null ? 'Не передана источником' : money(loaded.lot.currentPrice)}<br />
+        Начало: {formatUtc(loaded.lot.startTime)}<br />Окончание: {formatUtc(loaded.lot.endTime)}</p>
+      <p>По загруженным лотам · STALZONE API · RU<br />Получено от источника: {formatUtc(loaded.fetchedAt)}</p>
+      <p>Это данные текущего набора, а не отдельный запрос актуального состояния лота. Временный ключ теряется при перезагрузке приложения.</p>
+    </> : <><h1>Лот недоступен в загруженном наборе</h1><p>Стабильного ID лота в API нет. Временный ключ не позволяет запросить отдельный лот у источника.</p></>}
+    <Link className="button button-primary" to={`/items/${encodeURIComponent(itemId)}`}>К лотам предмета</Link>
+  </section>;
 }
 
 function NotFoundPage() {
@@ -132,11 +152,11 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/items/:itemId" element={<ItemPageView />} />
-        <Route path="/items/:itemId/lots" element={<PendingPage />} />
-        <Route path="/items/:itemId/lots/:lotId" element={<PendingPage />} />
+        <Route path="/items/:itemId/lots" element={<ItemPageView />} />
+        <Route path="/items/:itemId/lots/:lotId" element={<LotDetailsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
-      <footer className="site-footer"><p>Неофициальный мониторинг аукциона STALZONE · RU</p><p>Официальный справочник · Лоты ещё не подключены</p></footer>
+      <footer className="site-footer"><p>Неофициальный мониторинг аукциона STALZONE · RU</p><p>Официальный справочник · Данные аукциона по запросу</p></footer>
     </main>
   </>;
 }
