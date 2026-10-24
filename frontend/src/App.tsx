@@ -1,74 +1,120 @@
 import { useEffect, useState } from 'react';
-import { Link, Route, Routes } from 'react-router-dom';
-import { getHealth } from './api';
+import { Link, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { ApiError, getItem, getItems, type Item, type ItemPage } from './api';
 import illustration from '../../assets/images/device.svg';
 
-function BackendStatus() {
-  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
+type LoadState<T> = { kind: 'loading' } | { kind: 'success'; data: T } | { kind: 'error'; notFound?: boolean };
+
+function ItemImage({ item }: { item: Item }) {
+  const [failed, setFailed] = useState(false);
+  return <img className="catalog-icon" src={!failed && item.iconUrl ? item.iconUrl : illustration}
+    onError={() => setFailed(true)} alt="" width="80" height="64" loading="lazy" />;
+}
+
+function HomePage() {
+  const [params, setParams] = useSearchParams();
+  const query = params.get('query') ?? '';
+  const rawOffset = Number(params.get('offset') ?? 0);
+  const offset = Number.isSafeInteger(rawOffset) && rawOffset >= 0 && rawOffset <= 2147483647 ? rawOffset : 0;
+  const active = params.has('query');
+  const [state, setState] = useState<LoadState<ItemPage>>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    if (!active) return;
     const controller = new AbortController();
     let cancelled = false;
+    setState({ kind: 'loading' });
     const timeout = window.setTimeout(() => controller.abort(), 8000);
-    setStatus('loading');
-    getHealth(controller.signal)
-      .then(() => { if (!cancelled) setStatus('ok'); })
-      .catch(() => { if (!cancelled) setStatus('error'); })
-      .finally(() => window.clearTimeout(timeout));
+    // Debounce typing; cleanup both aborts the request and ignores late responses.
+    const debounce = window.setTimeout(() => {
+      getItems(query, offset, controller.signal)
+        .then(data => { if (!cancelled) setState({ kind: 'success', data }); })
+        .catch(() => { if (!cancelled) setState({ kind: 'error' }); })
+        .finally(() => window.clearTimeout(timeout));
+    }, 250);
     return () => {
       cancelled = true;
       controller.abort();
       window.clearTimeout(timeout);
+      window.clearTimeout(debounce);
     };
-  }, [attempt]);
+  }, [active, query, offset, attempt]);
 
-  return (
-    <div className="backend-status">
-      <p role="status">
-        {status === 'loading' && 'Проверяем связь с сервером…'}
-        {status === 'ok' && 'Наш сервер доступен. Данные аукциона ещё не подключены.'}
-        {status === 'error' && 'Наш сервер недоступен. Проверьте запуск backend.'}
-      </p>
-      {status === 'error' && <button type="button" className="button button-primary" onClick={() => setAttempt(value => value + 1)}>Повторить проверку</button>}
+  return <section className="catalog" aria-labelledby="catalog-title">
+    <div className="intro">
+      <p className="eyebrow">АУКЦИОН STALZONE · RU</p>
+      <h1 className="catalog-title" id="catalog-title">Начните с предмета</h1>
+      <p className="intro-description">Найдите знакомый предмет в официальном справочнике. Загрузка лотов ещё не подключена.</p>
     </div>
-  );
+    <form className="search-toolbar" role="search" aria-label="Поиск предметов" onSubmit={event => {
+      event.preventDefault();
+      setParams({ query, offset: '0' }, { replace: true });
+      setAttempt(value => value + 1);
+    }}>
+      <div className="search-field">
+        <svg className="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="8.75" cy="8.75" r="5.417" /><path d="m13.333 13.333 3.75 3.75" /></svg>
+        <label className="visually-hidden" htmlFor="search-input">Найти предмет по названию</label>
+        <input id="search-input" type="search" placeholder="Например, Костюм" maxLength={200} value={query}
+          onChange={event => setParams({ query: event.target.value, offset: '0' }, { replace: true })} />
+      </div>
+      <button className="button button-primary search-button" type="submit">Найти</button>
+    </form>
+    <div className="results-heading"><h2>Справочник предметов</h2></div>
+    <div aria-live="polite" aria-busy={active && state.kind === 'loading'}>
+      {!active ? <div className="empty-state"><img className="empty-illustration" src={illustration} alt="" width="80" height="64" /><h3>Какой предмет ищем?</h3><p>Введите название или его часть. Чтобы открыть весь справочник, нажмите «Найти» с пустым запросом.</p></div>
+        : state.kind === 'loading' ? <p className="empty-state" role="status">Ищем предметы…</p>
+        : state.kind === 'error' ? <div className="empty-state" role="alert"><h3>Не удалось загрузить предметы</h3><p>Проверьте соединение и запуск backend, затем повторите запрос.</p><button className="button button-primary" onClick={() => setAttempt(value => value + 1)}>Повторить запрос</button></div>
+        : <>
+          <p className="catalog-summary">Найдено предметов: {state.data.totalCount}</p>
+          {state.data.items.length === 0 ? <div className="empty-state"><h3>Предметы не найдены</h3><p>Попробуйте другое название или более короткую часть слова.</p></div>
+            : <ul className="catalog-results">{state.data.items.map(item => <li key={item.id}>
+              <Link className="catalog-result" to={`/items/${encodeURIComponent(item.id)}`} state={{ returnTo: `/?${params.toString()}` }}>
+                <ItemImage item={item} /><span className="catalog-identity"><strong>{item.name}</strong><span>{item.category} · ID: {item.id}</span></span><span aria-hidden="true">→</span>
+              </Link>
+            </li>)}</ul>}
+          <nav className="catalog-pagination" aria-label="Страницы справочника">
+            {offset > 0 && <Link className="button" to={`/?${new URLSearchParams({ query, offset: String(Math.max(0, offset - 20)) })}`}>Назад</Link>}
+            {state.data.hasMore && <Link className="button button-primary" to={`/?${new URLSearchParams({ query, offset: String(offset + state.data.items.length) })}`}>Следующая страница</Link>}
+          </nav>
+          <p className="catalog-source">Источник: <a href={state.data.source} target="_blank" rel="noreferrer">EXBO-Studio / stalzone-database</a> · RU · ревизия {state.data.catalogRevision.slice(0, 12)}. Справочник не подтверждает наличие предмета на аукционе.</p>
+        </>}
+    </div>
+  </section>;
 }
 
-function HomePage() {
-  return (
-    <section className="catalog" aria-labelledby="catalog-title">
-      <div className="intro">
-        <p className="eyebrow">АУКЦИОН STALZONE</p>
-        <h1 className="catalog-title" id="catalog-title">Предметы. Цены. Ничего лишнего.</h1>
-        <p className="intro-description">Здесь можно будет искать предметы и сравнивать лоты аукциона региона RU.</p>
-      </div>
-      <div className="search-toolbar" role="search" aria-label="Поиск предметов">
-        <div className="search-field">
-          <svg className="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="8.75" cy="8.75" r="5.417" /><path d="m13.333 13.333 3.75 3.75" /></svg>
-          <label className="visually-hidden" htmlFor="search-input">Найти предмет по названию</label>
-          <input id="search-input" type="search" placeholder="Найти предмет по названию" disabled aria-describedby="catalog-notice" />
-        </div>
-        <button className="button button-primary search-button" type="button" disabled>Найти</button>
-      </div>
-      <div className="categories" aria-label="Будущие категории предметов">
-        {['Все предметы', 'Оружие', 'Броня', 'Артефакты', 'Снаряжение'].map((name, index) => (
-          <button key={name} type="button" className={`category${index === 0 ? ' is-active' : ''}`} disabled>{name}</button>
-        ))}
-      </div>
-      <div className="results-heading"><h2>Каталог предметов</h2><p className="results-count">Подключение готовится</p></div>
-      <div className="empty-state" id="catalog-notice">
-        <img className="empty-illustration" src={illustration} alt="" width="80" height="64" />
-        <h3>Данные ещё не подключены</h3>
-        <p>Поиск станет доступен после подключения официального справочника. Актуальные лоты и цены появятся после подключения серверного API. Сейчас рыночные данные не загружены.</p>
-      </div>
-      <BackendStatus />
-    </section>
-  );
+function ItemPageView() {
+  const { itemId = '' } = useParams();
+  const [state, setState] = useState<LoadState<Item>>({ kind: 'loading' });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+    setState({ kind: 'loading' });
+    getItem(itemId, controller.signal)
+      .then(data => { if (!cancelled) setState({ kind: 'success', data }); })
+      .catch(error => { if (!cancelled) setState({ kind: 'error', notFound: error instanceof ApiError && error.status === 404 }); })
+      .finally(() => window.clearTimeout(timeout));
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(timeout); };
+  }, [itemId, attempt]);
+  return <section className="empty-state">
+    {state.kind === 'loading' ? <p role="status">Загружаем предмет…</p>
+      : state.kind === 'error' ? <><h1>{state.notFound ? 'Предмет не найден' : 'Не удалось загрузить предмет'}</h1>{!state.notFound && <button className="button button-primary" onClick={() => setAttempt(value => value + 1)}>Повторить запрос</button>}</>
+      : <><ItemImage key={state.data.id} item={state.data} /><h1>{state.data.name}</h1><p>{state.data.category} · ID: {state.data.id}</p><h2>Загрузка лотов ещё не подключена</h2><p>Здесь пока только данные официального справочника.</p></>}
+    <CatalogReturn />
+  </section>;
+}
+
+// The search URL survives browser Back and is also used for the explicit return link.
+function CatalogReturn() {
+  const location = useLocation();
+  const returnTo: unknown = location.state?.returnTo;
+  return <Link className="button button-primary" to={typeof returnTo === 'string' && returnTo.startsWith('/?') ? returnTo : '/'}>Вернуться к поиску</Link>;
 }
 
 function PendingPage() {
-  return <section className="empty-state"><h1>Лоты ещё не подключены</h1><p>Данные предмета и лотов будут загружаться через наш сервер. На этом этапе они недоступны.</p><Link className="button button-primary" to="/">Вернуться в каталог</Link></section>;
+  return <section className="empty-state"><h1>Лоты ещё не подключены</h1><Link className="button button-primary" to="/">Вернуться в каталог</Link></section>;
 }
 
 function NotFoundPage() {
@@ -85,11 +131,12 @@ export default function App() {
     <main id="main" className="container" tabIndex={-1}>
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/items/:itemId" element={<ItemPageView />} />
         <Route path="/items/:itemId/lots" element={<PendingPage />} />
         <Route path="/items/:itemId/lots/:lotId" element={<PendingPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
-      <footer className="site-footer"><p>Неофициальный мониторинг аукциона STALZONE · RU</p><p>Начальная версия · Данные не подключены</p></footer>
+      <footer className="site-footer"><p>Неофициальный мониторинг аукциона STALZONE · RU</p><p>Официальный справочник · Лоты ещё не подключены</p></footer>
     </main>
   </>;
 }
