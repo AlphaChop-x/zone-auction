@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError, getLots, type LotPage } from './api';
 import { Link } from 'react-router-dom';
 import { rememberLots } from './loadedLots';
+import { emptyFilterDraft, selectLots, sortLabels, validateFilters, type LotSort } from './lotFilters';
 
 type Operation = 'initial' | 'more' | 'refresh';
 const dateFormat = new Intl.DateTimeFormat('ru-RU', {
@@ -18,6 +19,9 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
   const [operation, setOperation] = useState<Operation | null>('initial');
   const [failure, setFailure] = useState<{ error: Error; operation: Operation } | null>(null);
   const [retryReady, setRetryReady] = useState(true);
+  const [draft, setDraft] = useState(emptyFilterDraft);
+  const [appliedDraft, setAppliedDraft] = useState(emptyFilterDraft);
+  const [sort, setSort] = useState<LotSort>('loaded');
   const pagesRef = useRef<LotPage[]>([]);
   const busy = useRef(false);
   const mounted = useRef(false);
@@ -76,6 +80,17 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
   }, [retryAt]);
 
   const lots = pages.flatMap(page => page.items);
+  const validation = validateFilters(draft);
+  const applied = validateFilters(appliedDraft);
+  // appliedDraft is updated only after successful validation; the source pages stay untouched.
+  const filters = applied.valid ? applied.filters : { min: null, max: null, onlyBuyout: false };
+  const visibleLots = selectLots(lots, filters, sort);
+  const errors = validation.valid ? {} : validation.errors;
+  const hasEdits = draft.min !== appliedDraft.min || draft.max !== appliedDraft.max || draft.onlyBuyout !== appliedDraft.onlyBuyout;
+  function resetFilters() {
+    setDraft(emptyFilterDraft());
+    setAppliedDraft(emptyFilterDraft());
+  }
   const fetched = pages.map(page => Date.parse(page.fetchedAt));
   const earliest = fetched.length ? Math.min(...fetched) : null;
   const latest = fetched.length ? Math.max(...fetched) : null;
@@ -90,6 +105,44 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
       <p>Источник: <a href="https://eapi.stalzone.com/reference" target="_blank" rel="noreferrer">STALZONE API</a> · RU</p>
       <p>Получено от источника: {earliest === null || latest === null ? 'ещё не получено' : earliest === latest ? formatUtc(earliest) : `${formatUtc(earliest)} — ${formatUtc(latest)}`}</p>
     </div>
+    <form className="lot-filters" aria-label="Фильтры загруженных лотов" noValidate onSubmit={event => {
+      event.preventDefault();
+      if (validation.valid) setAppliedDraft({ ...draft });
+      else event.currentTarget.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus();
+    }}>
+      <p className="filter-description">Фильтры общей цены выкупа за весь лот. Обрабатываются только загруженные лоты.</p>
+      <div className="filter-fields">
+        <div className="filter-field">
+          <label htmlFor="buyout-min">Выкуп от</label>
+          <input id="buyout-min" type="text" inputMode="decimal" value={draft.min} placeholder="Без ограничения" maxLength={64}
+            aria-invalid={!!errors.min} aria-describedby={errors.min ? 'buyout-min-error filter-draft-notice' : 'filter-draft-notice'}
+            onChange={event => setDraft(value => ({ ...value, min: event.target.value }))} />
+          {errors.min && <p className="filter-error" id="buyout-min-error">{errors.min}</p>}
+        </div>
+        <div className="filter-field">
+          <label htmlFor="buyout-max">Выкуп до</label>
+          <input id="buyout-max" type="text" inputMode="decimal" value={draft.max} placeholder="Без ограничения" maxLength={64}
+            aria-invalid={!!errors.max} aria-describedby={errors.max ? 'buyout-max-error filter-draft-notice' : 'filter-draft-notice'}
+            onChange={event => setDraft(value => ({ ...value, max: event.target.value }))} />
+          {errors.max && <p className="filter-error" id="buyout-max-error">{errors.max}</p>}
+        </div>
+        <label className="filter-check"><input type="checkbox" checked={draft.onlyBuyout}
+          onChange={event => setDraft(value => ({ ...value, onlyBuyout: event.target.checked }))} />Только с выкупом</label>
+      </div>
+      <div className="filter-actions"><button className="button button-primary" type="submit">Применить фильтры</button>
+        <button className="button filter-reset" type="button" onClick={resetFilters}>Сбросить фильтры</button></div>
+      <p className="filter-draft-notice" id="filter-draft-notice" role="status">{!validation.valid
+        ? 'Диапазон не применён: исправьте ошибки. Показаны результаты с активными параметрами ниже.'
+        : hasEdits ? 'Есть неприменённые изменения. Нажмите «Применить фильтры».' : 'Показаны результаты с активными параметрами ниже.'}</p>
+      <div className="filter-field filter-sort"><label htmlFor="lot-sort">Сортировка загруженных лотов</label>
+        <select id="lot-sort" value={sort} onChange={event => setSort(event.target.value as LotSort)}>
+          {Object.entries(sortLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </div>
+    </form>
+    <p className="lots-active">Активные параметры: выкуп от {filters.min?.text ?? 'без ограничения'}; выкуп до {filters.max?.text ?? 'без ограничения'};
+      {' '}только с выкупом: {filters.onlyBuyout ? 'да' : 'нет'}; сортировка: {sortLabels[sort]}.</p>
+    <p className="lots-shown" role="status">Показано {visibleLots.length} из {lots.length} загруженных</p>
     <div aria-live="polite" aria-busy={operation !== null}>
       {operation === 'initial' && <p className="empty-state" role="status">Загружаем лоты…</p>}
       {failure && <div className="lots-error" role="alert">
@@ -100,10 +153,13 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
         <button className="button button-primary" disabled={disabled} onClick={() => void load(failure.operation)}>Повторить запрос лотов</button>
       </div>}
       {pages.length > 0 && lots.length === 0 && <div className="empty-state"><h3>Лотов нет</h3><p>Источник не вернул активных предложений для этого предмета.</p></div>}
-      {lots.length > 0 && <table className="lots-table">
+      {lots.length > 0 && visibleLots.length === 0 && <div className="empty-state"><h3>Нет лотов по выбранным фильтрам</h3>
+        <p>Измените фильтры или загрузите следующую страницу, если она доступна.</p>
+        <button className="button button-primary" type="button" onClick={resetFilters}>Сбросить фильтры</button></div>}
+      {visibleLots.length > 0 && <table className="lots-table">
         <caption className="visually-hidden">Загруженные лоты выбранного предмета. Цены за весь лот.</caption>
         <thead><tr><th scope="col">Количество</th><th scope="col">Начальная цена</th><th scope="col">Выкуп за лот</th><th scope="col">Окончание (UTC)</th><th scope="col"><span className="visually-hidden">Подробности</span></th></tr></thead>
-        <tbody>{lots.map(lot => <tr key={lot.id}>
+        <tbody>{visibleLots.map(lot => <tr key={lot.id}>
           <td data-label="Количество">{lot.quantity} шт.</td>
           <td data-label="Начальная цена">{money(lot.startPrice)}</td>
           <td data-label="Выкуп за лот">{lot.buyoutPrice === null ? 'Нет выкупа' : money(lot.buyoutPrice)}</td>

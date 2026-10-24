@@ -14,7 +14,8 @@ OAuth: `POST https://exbo.net/oauth/token`, form-urlencoded:
 
 Лоты: `GET https://eapi.stalzone.com/RU/auction/{id}/lots`, Bearer только с сервера.
 Запрашиваются `offset`, `limit`, фиксированные `sort=time_created`, `order=asc`,
-`additional=false`. Изменяемой пользовательской сортировки нет.
+`additional=false`. Этот внешний порядок фиксирован; клиентские фильтры и
+сортировка загруженных лотов не меняют внешние параметры или пагинацию.
 
 Фактический ответ: `{ total, lots }`. Строка содержит `itemId`, `amount`,
 `startPrice`, `buyoutPrice`, `startTime`, `endTime`, `additional`; `currentPrice`
