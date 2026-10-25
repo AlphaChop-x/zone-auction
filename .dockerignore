@@ -1,0 +1,21 @@
+# Frontend builds from the repository root because it imports shared assets.
+**
+!frontend/
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig.json
+!frontend/vite.config.ts
+!frontend/index.html
+!frontend/src/
+!frontend/src/**
+!frontend/nginx.conf
+!frontend/nginx-proxy.conf
+!assets/
+!assets/css/
+!assets/css/**
+!assets/images/
+!assets/images/**
+# Never send local environment files, even inside an allowed directory.
+**/.env
+**/.env.*
+**/appsettings.Local.json
