@@ -1,0 +1,6 @@
+**
+!ZoneAuction.Api.csproj
+!*.cs
+!appsettings.json
+!Data/
+!Data/items.ru.json

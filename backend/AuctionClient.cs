@@ -9,7 +9,7 @@ public sealed class AuctionClient(AuctionTransport transport, AuctionTokenProvid
         {
             try
             {
-                var path = $"RU/auction/{Uri.EscapeDataString(id)}/lots?offset={offset}&limit={limit}&sort=time_created&order=asc&additional=false";
+                var path = $"RU/auction/{Uri.EscapeDataString(id)}/lots?offset={offset}&limit={limit}&sort=buyout_price&order=asc&additional=false";
                 using var document = await transport.SendAsync(() =>
                 {
                     var request = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(options.ApiBaseUrl), path));

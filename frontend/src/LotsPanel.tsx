@@ -1,9 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, getLots, type LotPage } from './api';
-import { Link } from 'react-router-dom';
-import { rememberLots } from './loadedLots';
+import { Link, useLocation } from 'react-router-dom';
+import { getLoadedLots, rememberLots, type Operation } from './loadedLots';
+import { emptyFilterDraft, formatUnitBuyout, nextSort, selectLots, sortLabels, validateFilters, type LotSort, type SortColumn } from './lotFilters';
 
-type Operation = 'initial' | 'more' | 'refresh';
+const sortColumns: { column: SortColumn; label: string }[] = [
+  { column: 'buyout', label: 'Выкуп за лот' }, { column: 'unit', label: 'Выкуп за шт.' }, { column: 'end', label: 'Окончание (UTC)' },
+];
+const filterFields = [
+  { key: 'min', label: 'Выкуп от' }, { key: 'max', label: 'Выкуп до' },
+  { key: 'unitMin', label: 'За штуку от' }, { key: 'unitMax', label: 'За штуку до' },
+] as const;
+
+function SortButton({ column, label, sort, onSort }: { column: SortColumn; label: string; sort: LotSort; onSort: (sort: LotSort) => void }) {
+  const active = sort === `${column}-asc` || sort === `${column}-desc`;
+  const ascending = sort === `${column}-asc`;
+  const next = nextSort(sort, column);
+  return <button type="button" className={`lot-sort-button${active ? ' is-active' : ''}`} aria-pressed={active}
+    title={next === 'loaded' ? 'Вернуть порядок загрузки' : sortLabels[next]} onClick={() => onSort(next)}>
+    {label} <span aria-hidden="true">{active ? ascending ? '↑' : '↓' : '↕'}</span>
+    <span className="visually-hidden">{active ? ascending ? ' — по возрастанию' : ' — по убыванию' : ' — сортировать'}</span>
+  </button>;
+}
+
 const dateFormat = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
   timeZone: 'UTC', timeZoneName: 'short',
@@ -14,11 +33,16 @@ export const money = (value: string) => `${BigInt(value).toLocaleString('ru-RU')
 
 // Parent keys this component by exact item ID: changing items discards the entire set.
 export default function LotsPanel({ itemId, itemName }: { itemId: string; itemName: string }) {
-  const [pages, setPages] = useState<LotPage[]>([]);
-  const [operation, setOperation] = useState<Operation | null>('initial');
-  const [failure, setFailure] = useState<{ error: Error; operation: Operation } | null>(null);
+  const location = useLocation();
+  const [saved] = useState(() => getLoadedLots(itemId));
+  const [pages, setPages] = useState<LotPage[]>(saved?.pages ?? []);
+  const [operation, setOperation] = useState<Operation | null>(saved ? null : 'initial');
+  const [failure, setFailure] = useState<{ error: Error; operation: Operation } | null>(saved?.view.failure ?? null);
   const [retryReady, setRetryReady] = useState(true);
-  const pagesRef = useRef<LotPage[]>([]);
+  const [draft, setDraft] = useState(saved?.view.draft ?? emptyFilterDraft);
+  const [appliedDraft, setAppliedDraft] = useState(saved?.view.appliedDraft ?? emptyFilterDraft);
+  const [sort, setSort] = useState<LotSort>(saved?.view.sort ?? 'loaded');
+  const pagesRef = useRef<LotPage[]>(pages);
   const busy = useRef(false);
   const mounted = useRef(false);
   const generation = useRef(0);
@@ -43,7 +67,6 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
       // Do not merge different pages by a hash of fields: identical-looking lots may be distinct.
       const next = mode === 'more' ? duplicate ? previous : [...previous, page] : [page];
       pagesRef.current = next;
-      rememberLots(itemId, itemName, next);
       setPages(next);
     } catch (error) {
       if (mounted.current && generation.current === request)
@@ -56,7 +79,7 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
 
   useEffect(() => {
     mounted.current = true;
-    void load('initial');
+    if (!saved || (saved.pages.length === 0 && !saved.view.failure)) void load('initial');
     return () => {
       mounted.current = false;
       generation.current++;
@@ -64,6 +87,10 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
       busy.current = false;
     };
   }, [itemId]);
+
+  useEffect(() => {
+    rememberLots(itemId, itemName, pages, { draft, appliedDraft, sort, failure });
+  }, [itemId, itemName, pages, draft, appliedDraft, sort, failure]);
 
   const retryAt = failure?.error instanceof ApiError ? failure.error.retryAt : undefined;
   useEffect(() => {
@@ -76,6 +103,17 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
   }, [retryAt]);
 
   const lots = pages.flatMap(page => page.items);
+  const validation = validateFilters(draft);
+  const applied = validateFilters(appliedDraft);
+  // appliedDraft is updated only after successful validation; the source pages stay untouched.
+  const filters = applied.valid ? applied.filters : { min: null, max: null, unitMin: null, unitMax: null, onlyBuyout: false };
+  const visibleLots = selectLots(lots, filters, sort);
+  const errors = validation.valid ? {} : validation.errors;
+  const hasEdits = filterFields.some(({ key }) => draft[key] !== appliedDraft[key]) || draft.onlyBuyout !== appliedDraft.onlyBuyout;
+  function resetFilters() {
+    setDraft(emptyFilterDraft());
+    setAppliedDraft(emptyFilterDraft());
+  }
   const fetched = pages.map(page => Date.parse(page.fetchedAt));
   const earliest = fetched.length ? Math.min(...fetched) : null;
   const latest = fetched.length ? Math.max(...fetched) : null;
@@ -90,25 +128,66 @@ export default function LotsPanel({ itemId, itemName }: { itemId: string; itemNa
       <p>Источник: <a href="https://eapi.stalzone.com/reference" target="_blank" rel="noreferrer">STALZONE API</a> · RU</p>
       <p>Получено от источника: {earliest === null || latest === null ? 'ещё не получено' : earliest === latest ? formatUtc(earliest) : `${formatUtc(earliest)} — ${formatUtc(latest)}`}</p>
     </div>
+    <form className="lot-filters" aria-label="Фильтры загруженных лотов" noValidate onSubmit={event => {
+      event.preventDefault();
+      if (validation.valid) setAppliedDraft({ ...draft });
+      else event.currentTarget.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus();
+    }}>
+      <p className="filter-description">Диапазоны выкупа за весь лот и за штуку применяются одновременно. Обрабатываются только загруженные лоты.</p>
+      <div className="filter-fields">
+        {filterFields.map(({ key, label }) => <div className="filter-field" key={key}>
+          <label htmlFor={`buyout-${key}`}>{label}</label>
+          <input id={`buyout-${key}`} type="text" inputMode="decimal" value={draft[key]} placeholder="Без ограничения" maxLength={64}
+            aria-invalid={!!errors[key]} aria-describedby={errors[key] ? `buyout-${key}-error filter-draft-notice` : 'filter-draft-notice'}
+            onChange={event => setDraft(value => ({ ...value, [key]: event.target.value }))} />
+          {errors[key] && <p className="filter-error" id={`buyout-${key}-error`}>{errors[key]}</p>}
+        </div>)}
+        <label className="filter-check"><input type="checkbox" checked={draft.onlyBuyout}
+          onChange={event => setDraft(value => ({ ...value, onlyBuyout: event.target.checked }))} />Только с выкупом</label>
+      </div>
+      <div className="filter-actions"><button className="button button-primary" type="submit">Применить фильтры</button>
+        <button className="button filter-reset" type="button" onClick={resetFilters}>Сбросить фильтры</button></div>
+      <p className="filter-draft-notice" id="filter-draft-notice" role="status">{!validation.valid
+        ? 'Диапазон не применён: исправьте ошибки. Показаны результаты с активными параметрами ниже.'
+        : hasEdits ? 'Есть неприменённые изменения. Нажмите «Применить фильтры».' : 'Показаны результаты с активными параметрами ниже.'}</p>
+    </form>
+    <p className="lots-active">Активные параметры: выкуп от {filters.min?.text ?? 'без ограничения'}; выкуп до {filters.max?.text ?? 'без ограничения'};
+      {' '}за штуку от {filters.unitMin?.text ?? 'без ограничения'}; за штуку до {filters.unitMax?.text ?? 'без ограничения'};
+      {' '}только с выкупом: {filters.onlyBuyout ? 'да' : 'нет'}; сортировка: {sortLabels[sort]}.</p>
+    <p className="lots-note">Выкуп за шт. = выкуп за лот / количество. ≈ — округлено до двух знаков только для показа; фильтры и сортировка используют точное значение.</p>
+    <p className="lots-note">Сортировка стрелками: возрастание → убывание → порядок загрузки.</p>
+    <div className="lots-mobile-sort" role="group" aria-label="Сортировка загруженных лотов">
+      {sortColumns.map(props => <SortButton key={props.column} {...props} sort={sort} onSort={setSort} />)}
+    </div>
+    <p className="lots-shown" role="status">Показано {visibleLots.length} из {lots.length} загруженных. Сортировка: {sortLabels[sort]}.</p>
     <div aria-live="polite" aria-busy={operation !== null}>
       {operation === 'initial' && <p className="empty-state" role="status">Загружаем лоты…</p>}
       {failure && <div className="lots-error" role="alert">
-        <h3>{failure.error instanceof ApiError && failure.error.status === 429 ? 'Ограничение запросов' : 'Не удалось загрузить лоты'}</h3>
+        <h3>{failure.error instanceof ApiError && failure.error.status === 429 ? 'Ограничение запросов' : failure.operation === 'more' ? 'Не удалось загрузить ещё лоты' : failure.operation === 'refresh' ? 'Не удалось обновить лоты' : 'Не удалось загрузить лоты'}</h3>
         <p>{failure.error.message}</p>
         {pages.length > 0 && <p>{failure.operation === 'refresh' ? 'Обновление не удалось. Показан прежний набор с прежним временем получения.' : 'Сохранены ранее загруженные страницы.'}</p>}
         {retryAt !== undefined && <p>Повтор доступен после {formatUtc(retryAt)}.</p>}
         <button className="button button-primary" disabled={disabled} onClick={() => void load(failure.operation)}>Повторить запрос лотов</button>
       </div>}
       {pages.length > 0 && lots.length === 0 && <div className="empty-state"><h3>Лотов нет</h3><p>Источник не вернул активных предложений для этого предмета.</p></div>}
-      {lots.length > 0 && <table className="lots-table">
-        <caption className="visually-hidden">Загруженные лоты выбранного предмета. Цены за весь лот.</caption>
-        <thead><tr><th scope="col">Количество</th><th scope="col">Начальная цена</th><th scope="col">Выкуп за лот</th><th scope="col">Окончание (UTC)</th><th scope="col"><span className="visually-hidden">Подробности</span></th></tr></thead>
-        <tbody>{lots.map(lot => <tr key={lot.id}>
+      {lots.length > 0 && visibleLots.length === 0 && <div className="empty-state"><h3>Нет лотов по выбранным фильтрам</h3>
+        <p>Измените фильтры или загрузите следующую страницу, если она доступна.</p>
+        <button className="button button-primary" type="button" onClick={resetFilters}>Сбросить фильтры</button></div>}
+      {visibleLots.length > 0 && <table className="lots-table">
+        <caption className="visually-hidden">Загруженные лоты: начальная цена и выкуп за весь лот, отдельно выкуп за штуку.</caption>
+        <thead><tr><th scope="col">Количество</th><th scope="col">Начальная цена</th>
+          {sortColumns.map(props => <th key={props.column} scope="col" aria-sort={sort === `${props.column}-asc` ? 'ascending' : sort === `${props.column}-desc` ? 'descending' : 'none'}>
+            <SortButton {...props} sort={sort} onSort={setSort} />
+          </th>)}
+          <th scope="col"><span className="visually-hidden">Подробности</span></th></tr></thead>
+        <tbody>{visibleLots.map(lot => <tr key={lot.id}>
           <td data-label="Количество">{lot.quantity} шт.</td>
           <td data-label="Начальная цена">{money(lot.startPrice)}</td>
           <td data-label="Выкуп за лот">{lot.buyoutPrice === null ? 'Нет выкупа' : money(lot.buyoutPrice)}</td>
+          <td data-label="Выкуп за шт.">{formatUnitBuyout(lot)}</td>
           <td data-label="Окончание (UTC)"><time dateTime={lot.endTime}>{formatUtc(lot.endTime)}</time></td>
-          <td data-label="Подробности"><Link to={`/items/${encodeURIComponent(itemId)}/lots/${encodeURIComponent(lot.id)}`}>Подробнее о лоте</Link></td>
+          <td data-label="Подробности"><Link id={`lot-${lot.id}`} to={`/items/${encodeURIComponent(itemId)}/lots/${encodeURIComponent(lot.id)}`}
+            state={{ returnTo: location.state?.returnTo, lotsPath: location.pathname }} aria-label={`Подробнее о лоте: ${lot.quantity} шт., выкуп ${lot.buyoutPrice === null ? 'отсутствует' : money(lot.buyoutPrice)}, окончание ${formatUtc(lot.endTime)}`}>Подробнее о лоте</Link></td>
         </tr>)}</tbody>
       </table>}
       {operation === 'more' && <p className="lots-progress" role="status">Загружаем ещё лоты…</p>}
