@@ -46,6 +46,31 @@ docker compose down
 docker compose up --build -d
 ```
 
+### Запуск на сервере без скачивания репозитория вручную
+
+Передайте на сервер только [`compose.remote.yaml`](compose.remote.yaml),
+сохраните его там как `compose.yaml` и создайте рядом `.env` с полями
+`Stalcraft__ClientId` и `Stalcraft__ClientSecret` (пример — в `.env.example`).
+Затем выполните из этой папки:
+
+```sh
+docker compose config --quiet
+docker compose up --build -d
+```
+
+Docker BuildKit сам скачает исходники из GitHub и соберёт оба образа на сервере.
+Локальная копия репозитория, Git, Node.js и .NET SDK на сервере не требуются.
+Нужен доступ к GitHub, реестрам образов и источникам зависимостей во время сборки.
+
+По умолчанию собирается ветка `main`. Для фиксированной версии можно задать
+`ZONE_AUCTION_REF` в `.env`: полный SHA коммита или тег. Для обновления из `main`
+повторите `docker compose up --build -d`.
+Приложение доступно по адресу `http://IP-СЕРВЕРА:8080`, если порт разрешён
+на сервере. Для HTTPS используется внешний reverse proxy с сертификатом.
+
+При проверке этого варианта из репозитория используйте явный файл:
+`docker compose -f compose.remote.yaml up --build -d`.
+
 ## О проекте
 
 Zone Auction — неофициальное приложение для поиска предметов и просмотра

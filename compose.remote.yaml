@@ -1,0 +1,36 @@
+# Standalone: send this file to the server as compose.yaml.
+# BuildKit downloads the sources from GitHub; no local checkout is needed.
+services:
+  backend:
+    build:
+      context: "https://github.com/AlphaChop-x/zone-auction.git#${ZONE_AUCTION_REF:-main}:backend"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_HTTP_PORTS: "8080"
+      AllowedHosts: "${AllowedHosts:-*}"
+      Stalcraft__ClientId: "${Stalcraft__ClientId:-}"
+      Stalcraft__ClientSecret: "${Stalcraft__ClientSecret:-}"
+      Stalcraft__ApiBaseUrl: "${Stalcraft__ApiBaseUrl:-https://eapi.stalzone.com/}"
+      Stalcraft__TokenUrl: "${Stalcraft__TokenUrl:-https://exbo.net/oauth/token}"
+      Stalcraft__Region: "${Stalcraft__Region:-RU}"
+      Stalcraft__RequestTimeoutSeconds: "${Stalcraft__RequestTimeoutSeconds:-15}"
+      Stalcraft__MinimumRequestIntervalMs: "${Stalcraft__MinimumRequestIntervalMs:-1000}"
+      Stalcraft__CacheSeconds: "${Stalcraft__CacheSeconds:-10}"
+      Stalcraft__ErrorCacheSeconds: "${Stalcraft__ErrorCacheSeconds:-2}"
+      Stalcraft__MaxCachedPages: "${Stalcraft__MaxCachedPages:-256}"
+      Stalcraft__MaxPendingPages: "${Stalcraft__MaxPendingPages:-16}"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
+  frontend:
+    build:
+      context: "https://github.com/AlphaChop-x/zone-auction.git#${ZONE_AUCTION_REF:-main}"
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
